@@ -318,6 +318,93 @@ async def get_session_by_id(session_id: str):
     conn.close()
     return {"session_id": session_id, "records": sessions}
 
+@app.get("/api/sessions/{session_id}/download")
+async def download_session_with_nested_structure(session_id: str):
+    """Download session data with original nested structure preserved"""
+    conn = get_db_connection()
+    
+    # Check if we're using SQLite or PostgreSQL
+    is_sqlite = hasattr(conn, 'execute') and 'sqlite' in str(type(conn)).lower()
+    
+    if is_sqlite:
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT * FROM session_records 
+            WHERE session_id = ? 
+            ORDER BY timestamp
+        ''', (session_id,))
+        
+        columns = [description[0] for description in cursor.description]
+        rows = cursor.fetchall()
+        flat_records = []
+        for row in rows:
+            record_dict = dict(zip(columns, row))
+            flat_records.append(record_dict)
+    else:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute('''
+            SELECT * FROM session_records 
+            WHERE session_id = %s 
+            ORDER BY timestamp
+        ''', (session_id,))
+        
+        rows = cursor.fetchall()
+        flat_records = [dict(row) for row in rows]
+    
+    conn.close()
+    
+    # Reconstruct nested structure
+    nested_records = []
+    for record in flat_records:
+        nested_record = {
+            "session_id": record.get("session_id"),
+            "phase": record.get("phase"),
+            "area": record.get("area"),
+            "timestamp": record.get("timestamp"),
+            "conversation_data": {
+                "speaker": record.get("speaker"),
+                "text": record.get("text")
+            },
+            "hmd_data": {
+                "position": {
+                    "x": record.get("hmd_position_x"),
+                    "y": record.get("hmd_position_y"),
+                    "z": record.get("hmd_position_z")
+                },
+                "gaze_vector": {
+                    "x": record.get("hmd_gaze_x"),
+                    "y": record.get("hmd_gaze_y"),
+                    "z": record.get("hmd_gaze_z")
+                },
+                "gaze_actor": record.get("hmd_gaze_actor"),
+                "movement_speed": record.get("hmd_movement_speed")
+            },
+            "controller_data": {
+                "r_position": {
+                    "x": record.get("controller_r_x"),
+                    "y": record.get("controller_r_y"),
+                    "z": record.get("controller_r_z")
+                },
+                "l_position": {
+                    "x": record.get("controller_l_x"),
+                    "y": record.get("controller_l_y"),
+                    "z": record.get("controller_l_z")
+                },
+                "r_interacted_actor": record.get("controller_r_actor"),
+                "l_interacted_actor": record.get("controller_l_actor"),
+                "r_movement_speed": record.get("controller_r_speed"),
+                "l_movement_speed": record.get("controller_l_speed")
+            },
+            "user_emotion": record.get("user_emotion"),
+            "emotion_window_flag": record.get("emotion_window_flag")
+        }
+        nested_records.append(nested_record)
+    
+    return JSONResponse(
+        content=nested_records,
+        headers={"Content-Disposition": f"attachment; filename=session_{session_id}.json"}
+    )
+
 @app.get("/api/stats")
 async def get_stats():
     """Get basic statistics about the data"""

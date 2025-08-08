@@ -145,10 +145,10 @@
         // Download session data
         async function downloadSession(sessionId) {
             try {
-                const response = await fetch(`/api/sessions/${sessionId}`);
+                const response = await fetch(`/api/sessions/${sessionId}/download`);
                 const data = await response.json();
                 
-                const blob = new Blob([JSON.stringify(data.records, null, 2)], { type: 'application/json' });
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
