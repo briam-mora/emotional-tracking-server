@@ -239,7 +239,18 @@ async def upload_session_data(file: UploadFile = File(...)):
         conn.commit()
         conn.close()
         
-        return {"message": f"Successfully uploaded {records_added} records", "records_added": records_added}
+        # Get updated session count
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('SELECT COUNT(DISTINCT session_id) FROM session_records')
+        total_sessions = cursor.fetchone()[0]
+        conn.close()
+        
+        return {
+            "message": f"Successfully uploaded {records_added} records", 
+            "records_added": records_added,
+            "total_sessions": total_sessions
+        }
         
     except json.JSONDecodeError:
         raise HTTPException(status_code=400, detail="Invalid JSON format")
@@ -281,6 +292,71 @@ async def get_sessions(limit: int = 100, offset: int = 0):
     
     conn.close()
     return {"sessions": sessions, "total": len(sessions)}
+
+@app.get("/api/session-groups")
+async def get_session_groups(limit: int = 50, offset: int = 0):
+    """Get session groups with summary information - much more efficient for dashboard"""
+    conn = get_db_connection()
+    
+    # Check if we're using SQLite or PostgreSQL
+    is_sqlite = hasattr(conn, 'execute') and 'sqlite' in str(type(conn)).lower()
+    
+    if is_sqlite:
+        cursor = conn.cursor()
+        # Get session groups with count and latest timestamp
+        cursor.execute('''
+            SELECT 
+                session_id,
+                COUNT(*) as record_count,
+                MAX(created_at) as last_updated,
+                MIN(created_at) as first_record,
+                COUNT(DISTINCT user_emotion) as emotion_variety
+            FROM session_records 
+            GROUP BY session_id
+            ORDER BY last_updated DESC 
+            LIMIT ? OFFSET ?
+        ''', (limit, offset))
+        
+        columns = [description[0] for description in cursor.description]
+        rows = cursor.fetchall()
+        session_groups = []
+        for row in rows:
+            session_dict = dict(zip(columns, row))
+            session_groups.append(session_dict)
+            
+        # Get total count of unique sessions
+        cursor.execute('SELECT COUNT(DISTINCT session_id) FROM session_records')
+        total_sessions = cursor.fetchone()[0]
+        
+    else:
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        # Get session groups with count and latest timestamp
+        cursor.execute('''
+            SELECT 
+                session_id,
+                COUNT(*) as record_count,
+                MAX(created_at) as last_updated,
+                MIN(created_at) as first_record,
+                COUNT(DISTINCT user_emotion) as emotion_variety
+            FROM session_records 
+            GROUP BY session_id
+            ORDER BY last_updated DESC 
+            LIMIT %s OFFSET %s
+        ''', (limit, offset))
+        
+        rows = cursor.fetchall()
+        session_groups = [dict(row) for row in rows]
+        
+        # Get total count of unique sessions
+        cursor.execute('SELECT COUNT(DISTINCT session_id) FROM session_records')
+        total_sessions = cursor.fetchone()[0]
+    
+    conn.close()
+    return {
+        "session_groups": session_groups, 
+        "total_sessions": total_sessions,
+        "has_more": len(session_groups) == limit
+    }
 
 @app.get("/api/sessions/{session_id}")
 async def get_session_by_id(session_id: str):
