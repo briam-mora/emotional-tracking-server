@@ -204,17 +204,36 @@
         async function loadSessionsFallback() {
             try {
                 console.log('Using fallback sessions endpoint...');
-                const response = await fetch(`/api/sessions?limit=1000`);
                 
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                // Fetch all records by making multiple requests
+                let allSessions = [];
+                let offset = 0;
+                const batchSize = 1000;
+                let hasMore = true;
+                
+                while (hasMore) {
+                    const response = await fetch(`/api/sessions?limit=${batchSize}&offset=${offset}`);
+                    
+                    if (!response.ok) {
+                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    const data = await response.json();
+                    allSessions = allSessions.concat(data.sessions);
+                    
+                    // Check if we got fewer records than requested (means we've reached the end)
+                    if (data.sessions.length < batchSize) {
+                        hasMore = false;
+                    } else {
+                        offset += batchSize;
+                    }
                 }
                 
-                const data = await response.json();
+                console.log(`Fetched ${allSessions.length} total records in fallback mode`);
                 
-                // Group by session_id (original logic)
+                // Group by session_id
                 const sessionGroups = {};
-                data.sessions.forEach(session => {
+                allSessions.forEach(session => {
                     if (!sessionGroups[session.session_id]) {
                         sessionGroups[session.session_id] = [];
                     }
@@ -226,7 +245,7 @@
                 
                 // Update session count
                 totalSessions = Object.keys(sessionGroups).length;
-                document.getElementById('sessionCount').textContent = `Total Sessions: ${totalSessions} (fallback mode)`;
+                document.getElementById('sessionCount').textContent = `Total Sessions: ${totalSessions} (fallback mode - ${allSessions.length} records)`;
                 
                 // Update pagination info
                 updatePaginationInfo();

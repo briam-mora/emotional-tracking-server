@@ -298,9 +298,11 @@ async def get_session_groups(limit: int = 50, offset: int = 0):
     """Get session groups with summary information - much more efficient for dashboard"""
     try:
         conn = get_db_connection()
+        print(f"Database connection established: {type(conn)}")
         
         # Check if we're using SQLite or PostgreSQL
         is_sqlite = hasattr(conn, 'execute') and 'sqlite' in str(type(conn)).lower()
+        print(f"Detected database type - SQLite: {is_sqlite}")
         
         if is_sqlite:
             cursor = conn.cursor()
@@ -352,6 +354,7 @@ async def get_session_groups(limit: int = 50, offset: int = 0):
             cursor.execute('SELECT COUNT(DISTINCT session_id) FROM session_records')
             total_sessions = cursor.fetchone()[0]
         
+        print(f"Successfully fetched {len(session_groups)} session groups, total sessions: {total_sessions}")
         conn.close()
         return {
             "session_groups": session_groups, 
@@ -361,12 +364,14 @@ async def get_session_groups(limit: int = 50, offset: int = 0):
     except Exception as e:
         # Log the error for debugging
         print(f"Error in session-groups endpoint: {str(e)}")
+        import traceback
+        print(f"Full traceback: {traceback.format_exc()}")
         # Return a fallback response
         return {
             "session_groups": [], 
             "total_sessions": 0,
             "has_more": False,
-            "error": "Database connection issue, please try again"
+            "error": f"Database connection issue: {str(e)}"
         }
 
 @app.get("/api/sessions/{session_id}")
