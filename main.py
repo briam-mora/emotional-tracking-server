@@ -296,67 +296,78 @@ async def get_sessions(limit: int = 100, offset: int = 0):
 @app.get("/api/session-groups")
 async def get_session_groups(limit: int = 50, offset: int = 0):
     """Get session groups with summary information - much more efficient for dashboard"""
-    conn = get_db_connection()
-    
-    # Check if we're using SQLite or PostgreSQL
-    is_sqlite = hasattr(conn, 'execute') and 'sqlite' in str(type(conn)).lower()
-    
-    if is_sqlite:
-        cursor = conn.cursor()
-        # Get session groups with count and latest timestamp
-        cursor.execute('''
-            SELECT 
-                session_id,
-                COUNT(*) as record_count,
-                MAX(created_at) as last_updated,
-                MIN(created_at) as first_record,
-                COUNT(DISTINCT user_emotion) as emotion_variety
-            FROM session_records 
-            GROUP BY session_id
-            ORDER BY last_updated DESC 
-            LIMIT ? OFFSET ?
-        ''', (limit, offset))
+    try:
+        conn = get_db_connection()
         
-        columns = [description[0] for description in cursor.description]
-        rows = cursor.fetchall()
-        session_groups = []
-        for row in rows:
-            session_dict = dict(zip(columns, row))
-            session_groups.append(session_dict)
+        # Check if we're using SQLite or PostgreSQL
+        is_sqlite = hasattr(conn, 'execute') and 'sqlite' in str(type(conn)).lower()
+        
+        if is_sqlite:
+            cursor = conn.cursor()
+            # Get session groups with count and latest timestamp
+            cursor.execute('''
+                SELECT 
+                    session_id,
+                    COUNT(*) as record_count,
+                    MAX(created_at) as last_updated,
+                    MIN(created_at) as first_record,
+                    COUNT(DISTINCT user_emotion) as emotion_variety
+                FROM session_records 
+                GROUP BY session_id
+                ORDER BY last_updated DESC 
+                LIMIT ? OFFSET ?
+            ''', (limit, offset))
             
-        # Get total count of unique sessions
-        cursor.execute('SELECT COUNT(DISTINCT session_id) FROM session_records')
-        total_sessions = cursor.fetchone()[0]
+            columns = [description[0] for description in cursor.description]
+            rows = cursor.fetchall()
+            session_groups = []
+            for row in rows:
+                session_dict = dict(zip(columns, row))
+                session_groups.append(session_dict)
+                
+            # Get total count of unique sessions
+            cursor.execute('SELECT COUNT(DISTINCT session_id) FROM session_records')
+            total_sessions = cursor.fetchone()[0]
+            
+        else:
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+            # Get session groups with count and latest timestamp
+            cursor.execute('''
+                SELECT 
+                    session_id,
+                    COUNT(*) as record_count,
+                    MAX(created_at) as last_updated,
+                    MIN(created_at) as first_record,
+                    COUNT(DISTINCT user_emotion) as emotion_variety
+                FROM session_records 
+                GROUP BY session_id
+                ORDER BY last_updated DESC 
+                LIMIT %s OFFSET %s
+            ''', (limit, offset))
+            
+            rows = cursor.fetchall()
+            session_groups = [dict(row) for row in rows]
+            
+            # Get total count of unique sessions
+            cursor.execute('SELECT COUNT(DISTINCT session_id) FROM session_records')
+            total_sessions = cursor.fetchone()[0]
         
-    else:
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        # Get session groups with count and latest timestamp
-        cursor.execute('''
-            SELECT 
-                session_id,
-                COUNT(*) as record_count,
-                MAX(created_at) as last_updated,
-                MIN(created_at) as first_record,
-                COUNT(DISTINCT user_emotion) as emotion_variety
-            FROM session_records 
-            GROUP BY session_id
-            ORDER BY last_updated DESC 
-            LIMIT %s OFFSET %s
-        ''', (limit, offset))
-        
-        rows = cursor.fetchall()
-        session_groups = [dict(row) for row in rows]
-        
-        # Get total count of unique sessions
-        cursor.execute('SELECT COUNT(DISTINCT session_id) FROM session_records')
-        total_sessions = cursor.fetchone()[0]
-    
-    conn.close()
-    return {
-        "session_groups": session_groups, 
-        "total_sessions": total_sessions,
-        "has_more": len(session_groups) == limit
-    }
+        conn.close()
+        return {
+            "session_groups": session_groups, 
+            "total_sessions": total_sessions,
+            "has_more": len(session_groups) == limit
+        }
+    except Exception as e:
+        # Log the error for debugging
+        print(f"Error in session-groups endpoint: {str(e)}")
+        # Return a fallback response
+        return {
+            "session_groups": [], 
+            "total_sessions": 0,
+            "has_more": False,
+            "error": "Database connection issue, please try again"
+        }
 
 @app.get("/api/sessions/{session_id}")
 async def get_session_by_id(session_id: str):
