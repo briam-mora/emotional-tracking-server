@@ -146,11 +146,10 @@
             }
         }
 
-        // Load sessions data using the new endpoint
+        // Load sessions data using the unified sessions endpoint
         async function loadSessions() {
             try {
-                // Try the new session-groups endpoint first
-                const response = await fetch(`/api/session-groups?limit=${pageSize}&offset=${currentPage * pageSize}`);
+                const response = await fetch(`/api/sessions?limit=${pageSize}&offset=${currentPage * pageSize}`);
                 
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -160,8 +159,8 @@
                 
                 // Check if there was an error in the response
                 if (data.error) {
-                    console.warn('Session-groups endpoint error, falling back to sessions endpoint:', data.error);
-                    await loadSessionsFallback();
+                    console.warn('Sessions endpoint error:', data.error);
+                    document.getElementById('sessionCount').textContent = 'Error loading sessions';
                     return;
                 }
                 
@@ -169,22 +168,22 @@
                 tbody.innerHTML = '';
                 
                 // Update session count
-                totalSessions = data.total_sessions;
+                totalSessions = data.total;
                 document.getElementById('sessionCount').textContent = `Total Sessions: ${totalSessions}`;
                 
                 // Update pagination info
                 updatePaginationInfo();
                 
-                // Render session groups
-                data.session_groups.forEach(sessionGroup => {
+                // Render sessions
+                data.items.forEach(session => {
                     const row = document.createElement('tr');
                     row.innerHTML = `
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${sessionGroup.session_id}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${sessionGroup.record_count}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${sessionGroup.emotion_variety}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${new Date(sessionGroup.last_updated).toLocaleString()}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${session.session_id}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${session.records}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${session.emotionVariety || '-'}</td>
+                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${new Date(session.updatedAt).toLocaleString()}</td>
                         <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            <button onclick="downloadSession('${sessionGroup.session_id}')" class="text-blue-600 hover:text-blue-900">Download</button>
+                            <button onclick="downloadSession('${session.session_id}')" class="text-blue-600 hover:text-blue-900">Download</button>
                         </td>
                     `;
                     tbody.appendChild(row);
@@ -194,88 +193,12 @@
                 updatePaginationButtons();
                 
             } catch (error) {
-                console.error('Error loading sessions with session-groups endpoint:', error);
-                // Fallback to original sessions endpoint
-                await loadSessionsFallback();
-            }
-        }
-
-        // Fallback function using the original sessions endpoint
-        async function loadSessionsFallback() {
-            try {
-                console.log('Using fallback sessions endpoint...');
-                
-                // Fetch all records by making multiple requests
-                let allSessions = [];
-                let offset = 0;
-                const batchSize = 1000;
-                let hasMore = true;
-                
-                while (hasMore) {
-                    const response = await fetch(`/api/sessions?limit=${batchSize}&offset=${offset}`);
-                    
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                    }
-                    
-                    const data = await response.json();
-                    allSessions = allSessions.concat(data.sessions);
-                    
-                    // Check if we got fewer records than requested (means we've reached the end)
-                    if (data.sessions.length < batchSize) {
-                        hasMore = false;
-                    } else {
-                        offset += batchSize;
-                    }
-                }
-                
-                console.log(`Fetched ${allSessions.length} total records in fallback mode`);
-                
-                // Group by session_id
-                const sessionGroups = {};
-                allSessions.forEach(session => {
-                    if (!sessionGroups[session.session_id]) {
-                        sessionGroups[session.session_id] = [];
-                    }
-                    sessionGroups[session.session_id].push(session);
-                });
-                
-                const tbody = document.getElementById('sessionsTable');
-                tbody.innerHTML = '';
-                
-                // Update session count
-                totalSessions = Object.keys(sessionGroups).length;
-                document.getElementById('sessionCount').textContent = `Total Sessions: ${totalSessions} (fallback mode - ${allSessions.length} records)`;
-                
-                // Update pagination info
-                updatePaginationInfo();
-                
-                // Render session groups
-                Object.keys(sessionGroups).forEach(sessionId => {
-                    const records = sessionGroups[sessionId];
-                    const lastRecord = records[records.length - 1];
-                    
-                    const row = document.createElement('tr');
-                    row.innerHTML = `
-                        <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${sessionId}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${records.length}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">-</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${new Date(lastRecord.created_at).toLocaleString()}</td>
-                        <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            <button onclick="downloadSession('${sessionId}')" class="text-blue-600 hover:text-blue-900">Download</button>
-                        </td>
-                    `;
-                    tbody.appendChild(row);
-                });
-                
-                // Update pagination buttons
-                updatePaginationButtons();
-                
-            } catch (error) {
-                console.error('Error loading sessions with fallback endpoint:', error);
+                console.error('Error loading sessions:', error);
                 document.getElementById('sessionCount').textContent = 'Error loading sessions';
             }
         }
+
+
 
         // Pagination functions
         function updatePaginationInfo() {

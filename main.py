@@ -259,73 +259,40 @@ async def upload_session_data(file: UploadFile = File(...)):
 
 @app.get("/api/sessions")
 async def get_sessions(limit: int = 100, offset: int = 0):
-    """Get session data with pagination"""
-    conn = get_db_connection()
-    
-    # Check if we're using SQLite or PostgreSQL
-    is_sqlite = hasattr(conn, 'execute') and 'sqlite' in str(type(conn)).lower()
-    
-    if is_sqlite:
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT * FROM session_records 
-            ORDER BY created_at DESC 
-            LIMIT ? OFFSET ?
-        ''', (limit, offset))
-        
-        columns = [description[0] for description in cursor.description]
-        rows = cursor.fetchall()
-        sessions = []
-        for row in rows:
-            session_dict = dict(zip(columns, row))
-            sessions.append(session_dict)
-    else:
-        cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute('''
-            SELECT * FROM session_records 
-            ORDER BY created_at DESC 
-            LIMIT %s OFFSET %s
-        ''', (limit, offset))
-        
-        rows = cursor.fetchall()
-        sessions = [dict(row) for row in rows]
-    
-    conn.close()
-    return {"sessions": sessions, "total": len(sessions)}
-
-@app.get("/api/session-groups")
-async def get_session_groups(limit: int = 50, offset: int = 0):
-    """Get session groups with summary information - much more efficient for dashboard"""
+    """Get list of all sessions with summary information"""
     try:
         conn = get_db_connection()
-        print(f"Database connection established: {type(conn)}")
         
         # Check if we're using SQLite or PostgreSQL
         is_sqlite = hasattr(conn, 'execute') and 'sqlite' in str(type(conn)).lower()
-        print(f"Detected database type - SQLite: {is_sqlite}")
         
         if is_sqlite:
             cursor = conn.cursor()
-            # Get session groups with count and latest timestamp
+            # Get session summaries with count, timestamps, and emotion variety
             cursor.execute('''
                 SELECT 
                     session_id,
-                    COUNT(*) as record_count,
-                    MAX(created_at) as last_updated,
-                    MIN(created_at) as first_record,
-                    COUNT(DISTINCT user_emotion) as emotion_variety
+                    COUNT(*) as records,
+                    MAX(created_at) as updatedAt,
+                    MIN(created_at) as firstRecord,
+                    COUNT(DISTINCT user_emotion) as emotionVariety
                 FROM session_records 
                 GROUP BY session_id
-                ORDER BY last_updated DESC 
+                ORDER BY updatedAt DESC 
                 LIMIT ? OFFSET ?
             ''', (limit, offset))
             
             columns = [description[0] for description in cursor.description]
             rows = cursor.fetchall()
-            session_groups = []
+            sessions = []
             for row in rows:
                 session_dict = dict(zip(columns, row))
-                session_groups.append(session_dict)
+                # Format timestamps to ISO format
+                if session_dict.get('updatedAt'):
+                    session_dict['updatedAt'] = session_dict['updatedAt'].replace(' ', 'T') + 'Z'
+                if session_dict.get('firstRecord'):
+                    session_dict['firstRecord'] = session_dict['firstRecord'].replace(' ', 'T') + 'Z'
+                sessions.append(session_dict)
                 
             # Get total count of unique sessions
             cursor.execute('SELECT COUNT(DISTINCT session_id) FROM session_records')
@@ -333,43 +300,42 @@ async def get_session_groups(limit: int = 50, offset: int = 0):
             
         else:
             cursor = conn.cursor(cursor_factory=RealDictCursor)
-            # Get session groups with count and latest timestamp
+            # Get session summaries with count, timestamps, and emotion variety
             cursor.execute('''
                 SELECT 
                     session_id,
-                    COUNT(*) as record_count,
-                    MAX(created_at) as last_updated,
-                    MIN(created_at) as first_record,
-                    COUNT(DISTINCT user_emotion) as emotion_variety
+                    COUNT(*) as records,
+                    MAX(created_at) as updatedAt,
+                    MIN(created_at) as firstRecord,
+                    COUNT(DISTINCT user_emotion) as emotionVariety
                 FROM session_records 
                 GROUP BY session_id
-                ORDER BY last_updated DESC 
+                ORDER BY updatedAt DESC 
                 LIMIT %s OFFSET %s
             ''', (limit, offset))
             
             rows = cursor.fetchall()
-            session_groups = [dict(row) for row in rows]
+            sessions = [dict(row) for row in rows]
             
             # Get total count of unique sessions
             cursor.execute('SELECT COUNT(DISTINCT session_id) FROM session_records')
             total_sessions = cursor.fetchone()[0]
         
-        print(f"Successfully fetched {len(session_groups)} session groups, total sessions: {total_sessions}")
         conn.close()
         return {
-            "session_groups": session_groups, 
-            "total_sessions": total_sessions,
-            "has_more": len(session_groups) == limit
+            "items": sessions,
+            "total": total_sessions,
+            "has_more": len(sessions) == limit
         }
     except Exception as e:
         # Log the error for debugging
-        print(f"Error in session-groups endpoint: {str(e)}")
+        print(f"Error in sessions endpoint: {str(e)}")
         import traceback
         print(f"Full traceback: {traceback.format_exc()}")
         # Return a fallback response
         return {
-            "session_groups": [], 
-            "total_sessions": 0,
+            "items": [], 
+            "total": 0,
             "has_more": False,
             "error": f"Database connection issue: {str(e)}"
         }
