@@ -298,9 +298,24 @@ async def get_sessions(limit: int = 100, offset: int = 0):
                 session_dict = dict(zip(columns, row))
                 # Format timestamps to ISO format
                 if session_dict.get('updatedAt'):
-                    session_dict['updatedAt'] = session_dict['updatedAt'].replace(' ', 'T') + 'Z'
+                    try:
+                        if isinstance(session_dict['updatedAt'], str):
+                            session_dict['updatedAt'] = session_dict['updatedAt'].replace(' ', 'T') + 'Z'
+                        else:
+                            session_dict['updatedAt'] = str(session_dict['updatedAt']).replace(' ', 'T') + 'Z'
+                    except Exception as e:
+                        print(f"Error formatting updatedAt: {e}")
+                        session_dict['updatedAt'] = str(session_dict['updatedAt'])
+                        
                 if session_dict.get('firstRecord'):
-                    session_dict['firstRecord'] = session_dict['firstRecord'].replace(' ', 'T') + 'Z'
+                    try:
+                        if isinstance(session_dict['firstRecord'], str):
+                            session_dict['firstRecord'] = session_dict['firstRecord'].replace(' ', 'T') + 'Z'
+                        else:
+                            session_dict['firstRecord'] = str(session_dict['firstRecord']).replace(' ', 'T') + 'Z'
+                    except Exception as e:
+                        print(f"Error formatting firstRecord: {e}")
+                        session_dict['firstRecord'] = str(session_dict['firstRecord'])
                 sessions.append(session_dict)
                 
             # Get total count of unique sessions
@@ -328,9 +343,12 @@ async def get_sessions(limit: int = 100, offset: int = 0):
             
             # Get total count of unique sessions
             cursor.execute('SELECT COUNT(DISTINCT session_id) FROM session_records')
-            total_sessions = cursor.fetchone()[0]
+            total_sessions = cursor.fetchone()['count']
         
         conn.close()
+        
+        # Debug logging
+        print(f"Sessions endpoint: Found {len(sessions)} sessions, total: {total_sessions}")
         
         # Check if we have any data
         if total_sessions == 0:
