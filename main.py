@@ -282,12 +282,10 @@ async def get_sessions(limit: int = 100, offset: int = 0):
                 SELECT 
                     session_id,
                     COUNT(*) as records,
-                    MAX(created_at) as updatedAt,
-                    MIN(created_at) as firstRecord,
-                    COUNT(DISTINCT user_emotion) as emotionVariety
+                    MIN(created_at) as created
                 FROM session_records 
                 GROUP BY session_id
-                ORDER BY updatedAt DESC 
+                ORDER BY created DESC 
                 LIMIT ? OFFSET ?
             ''', (limit, offset))
             
@@ -296,26 +294,16 @@ async def get_sessions(limit: int = 100, offset: int = 0):
             sessions = []
             for row in rows:
                 session_dict = dict(zip(columns, row))
-                # Format timestamps to ISO format
-                if session_dict.get('updatedAt'):
+                # Format timestamp to ISO format
+                if session_dict.get('created'):
                     try:
-                        if isinstance(session_dict['updatedAt'], str):
-                            session_dict['updatedAt'] = session_dict['updatedAt'].replace(' ', 'T') + 'Z'
+                        if isinstance(session_dict['created'], str):
+                            session_dict['created'] = session_dict['created'].replace(' ', 'T') + 'Z'
                         else:
-                            session_dict['updatedAt'] = str(session_dict['updatedAt']).replace(' ', 'T') + 'Z'
+                            session_dict['created'] = str(session_dict['created']).replace(' ', 'T') + 'Z'
                     except Exception as e:
-                        print(f"Error formatting updatedAt: {e}")
-                        session_dict['updatedAt'] = str(session_dict['updatedAt'])
-                        
-                if session_dict.get('firstRecord'):
-                    try:
-                        if isinstance(session_dict['firstRecord'], str):
-                            session_dict['firstRecord'] = session_dict['firstRecord'].replace(' ', 'T') + 'Z'
-                        else:
-                            session_dict['firstRecord'] = str(session_dict['firstRecord']).replace(' ', 'T') + 'Z'
-                    except Exception as e:
-                        print(f"Error formatting firstRecord: {e}")
-                        session_dict['firstRecord'] = str(session_dict['firstRecord'])
+                        print(f"Error formatting created: {e}")
+                        session_dict['created'] = str(session_dict['created'])
                 sessions.append(session_dict)
                 
             # Get total count of unique sessions
@@ -329,12 +317,10 @@ async def get_sessions(limit: int = 100, offset: int = 0):
                 SELECT 
                     session_id,
                     COUNT(*) as records,
-                    MAX(created_at) as updatedAt,
-                    MIN(created_at) as firstRecord,
-                    COUNT(DISTINCT user_emotion) as emotionVariety
+                    MIN(created_at) as created
                 FROM session_records 
                 GROUP BY session_id
-                ORDER BY updatedAt DESC 
+                ORDER BY created DESC 
                 LIMIT %s OFFSET %s
             ''', (limit, offset))
             
