@@ -37,6 +37,40 @@
             </div>
         </div>
 
+        <!-- Health Check Section -->
+        <div class="bg-white rounded-lg shadow mb-8">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-lg font-semibold text-gray-800">Database Health</h3>
+                    <button onclick="checkHealth()" class="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700">Check Health</button>
+                </div>
+            </div>
+            <div class="px-6 py-4">
+                <div id="healthStatus" class="text-sm text-gray-600">Click "Check Health" to test database connection</div>
+                <div id="healthDetails" class="mt-2 hidden">
+                    <div class="grid grid-cols-2 gap-4 text-sm">
+                        <div>
+                            <span class="font-medium">Status:</span>
+                            <span id="dbStatus" class="ml-2"></span>
+                        </div>
+                        <div>
+                            <span class="font-medium">Database:</span>
+                            <span id="dbConnection" class="ml-2"></span>
+                        </div>
+                        <div>
+                            <span class="font-medium">Total Records:</span>
+                            <span id="totalRecords" class="ml-2"></span>
+                        </div>
+                        <div>
+                            <span class="font-medium">Total Sessions:</span>
+                            <span id="totalSessions" class="ml-2"></span>
+                        </div>
+                    </div>
+                    <div id="healthError" class="mt-2 text-red-600 hidden"></div>
+                </div>
+            </div>
+        </div>
+
         <!-- Records List -->
         <div class="bg-white rounded-lg shadow">
             <div class="px-6 py-4 border-b border-gray-200">
@@ -255,9 +289,52 @@
             loadSessions();
         }
 
+        // Health check function
+        async function checkHealth() {
+            const healthStatus = document.getElementById('healthStatus');
+            const healthDetails = document.getElementById('healthDetails');
+            const healthError = document.getElementById('healthError');
+            
+            healthStatus.textContent = 'Checking database health...';
+            healthDetails.classList.add('hidden');
+            healthError.classList.add('hidden');
+            
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+                
+                if (data.status === 'healthy') {
+                    healthStatus.textContent = '✅ Database is healthy and connected';
+                    healthStatus.className = 'text-sm text-green-600 font-medium';
+                    
+                    // Show details
+                    document.getElementById('dbStatus').textContent = data.status;
+                    document.getElementById('dbConnection').textContent = data.database;
+                    document.getElementById('totalRecords').textContent = data.total_records;
+                    document.getElementById('totalSessions').textContent = data.total_sessions;
+                    
+                    healthDetails.classList.remove('hidden');
+                } else {
+                    healthStatus.textContent = '❌ Database health check failed';
+                    healthStatus.className = 'text-sm text-red-600 font-medium';
+                    
+                    healthError.textContent = data.error || 'Unknown error occurred';
+                    healthError.classList.remove('hidden');
+                }
+            } catch (error) {
+                healthStatus.textContent = '❌ Failed to check database health';
+                healthStatus.className = 'text-sm text-red-600 font-medium';
+                
+                healthError.textContent = `Network error: ${error.message}`;
+                healthError.classList.remove('hidden');
+            }
+        }
+
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
             loadSessions();
+            // Auto-check health on page load
+            checkHealth();
         });
     </script>
 </body>

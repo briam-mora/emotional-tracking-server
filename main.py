@@ -20,7 +20,16 @@ def get_db_connection():
         POSTGRES_URL = os.getenv('POSTGRES_URL')
         if not POSTGRES_URL:
             raise Exception("POSTGRES_URL environment variable not set")
-        return psycopg2.connect(POSTGRES_URL)
+        try:
+            conn = psycopg2.connect(POSTGRES_URL)
+            # Test the connection
+            cursor = conn.cursor()
+            cursor.execute('SELECT 1')
+            cursor.fetchone()
+            cursor.close()
+            return conn
+        except Exception as e:
+            raise Exception(f"Failed to connect to Vercel Postgres: {type(e).__name__}: {str(e)}")
     elif os.getenv('USE_SQLITE'):
         # Local SQLite for quick testing
         import sqlite3
@@ -322,6 +331,16 @@ async def get_sessions(limit: int = 100, offset: int = 0):
             total_sessions = cursor.fetchone()[0]
         
         conn.close()
+        
+        # Check if we have any data
+        if total_sessions == 0:
+            return {
+                "items": [],
+                "total": 0,
+                "has_more": False,
+                "message": "No sessions found in database"
+            }
+        
         return {
             "items": sessions,
             "total": total_sessions,
@@ -337,7 +356,7 @@ async def get_sessions(limit: int = 100, offset: int = 0):
             "items": [], 
             "total": 0,
             "has_more": False,
-            "error": f"Database connection issue: {str(e)}"
+            "error": f"Database connection issue: {type(e).__name__}: {str(e)}"
         }
 
 @app.get("/api/sessions/{session_id}")
@@ -462,6 +481,39 @@ async def download_session_with_nested_structure(session_id: str):
         content=nested_records,
         headers={"Content-Disposition": f"attachment; filename=session_{session_id}.json"}
     )
+
+@app.get("/api/health")
+async def health_check():
+    """Health check endpoint to test database connection"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Test basic query
+        cursor.execute('SELECT 1')
+        cursor.fetchone()
+        
+        # Check if table exists and has data
+        cursor.execute('SELECT COUNT(*) FROM session_records')
+        total_records = cursor.fetchone()[0]
+        
+        cursor.execute('SELECT COUNT(DISTINCT session_id) FROM session_records')
+        total_sessions = cursor.fetchone()[0]
+        
+        conn.close()
+        
+        return {
+            "status": "healthy",
+            "database": "connected",
+            "total_records": total_records,
+            "total_sessions": total_sessions
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "database": "disconnected",
+            "error": f"{type(e).__name__}: {str(e)}"
+        }
 
 @app.get("/api/stats")
 async def get_stats():
